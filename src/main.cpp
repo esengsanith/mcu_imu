@@ -12,7 +12,7 @@
 // Set to 0 for online mode (sends data over Wi-Fi)
 #define OFFLINE_TEST_MODE 0
 
-// --- ACCESS POINT TESTING ---
+// --- ACCESS POINT TESTING --- (had priority over main application logic)
 // Set to 1 for a simple Wi-Fi AP test, 0 for the full application
 #define AP_TEST_MODE 0
 // ----------------------------
@@ -116,8 +116,8 @@ void data_output_task(void* pvParameters) {
             Serial.println("\n--- SIMULATED SEND ---");
             Serial.printf("Data points captured: %d\n", point_count);
             // Print the full JSON payload to verify the data
-            // Serial.println("JSON Payload:");
-            // Serial.println(payload.c_str());
+            Serial.println("JSON Payload:");
+            Serial.println(payload.c_str());
             Serial.println("----------------------\n");
 
             total_data_points += point_count;
@@ -177,9 +177,31 @@ void wifi_transmission_task(void* pvParameters) {
 }
 #endif
 
+/**
+ * @brief Checks the power state from the designated GPIO pin
+ * @return The digital read value of the power flag pin
+ */
+int check_power_off(){
+    // read GPIO4
+    int power_state = digitalRead(ESP32_POWER_FLAG_PIN);
+    if (power_state == LOW){
+
+    }
+    return power_state;
+}
+
+/**
+ * @brief Main setup function
+ * Initializes serial, Wi-Fi, IMU, and starts tasks
+ */
 void setup() {
+    //set GPIO3 high as Tamer requested with pullup
+    pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
+    digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
+
     Serial.begin(115200);
     delay(2000); 
+
 
 #if OFFLINE_TEST_MODE == 1
     Serial.println("--- Tennis Racket Tracker (INTERRUPT-DRIVEN OFFLINE MODE) ---");
@@ -216,9 +238,23 @@ void setup() {
 #else
     xTaskCreate(wifi_transmission_task, "WiFi Task", 8192, NULL, 3, NULL);
 #endif
+
+    xTaskCreate([](void*){
+        for(;;){
+            vTaskDelay(pdMS_TO_TICKS(500));
+            if (check_power_off() == LOW){
+                digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // set the pin low to signal power off
+                Serial.println("Power off detected! Shutting down...");
+                esp_sleep_enable_timer_wakeup(1000000); // 1 second delay before sleep
+                esp_deep_sleep_start();
+            }
+        }
+    }, "Power Monitor Task", 2048, NULL, 5, NULL);
+
 }
 
 void loop() {
     vTaskDelete(NULL); 
+
 }
 #endif

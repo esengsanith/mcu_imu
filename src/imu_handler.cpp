@@ -4,9 +4,6 @@
 #include "config.h"
 #include <esp_timer.h>
 
-// BNO08x I2C address
-#define BNO08X_I2C_ADDR 0x4B
-
 SemaphoreHandle_t imuDataSemaphore = NULL;
 
 void IRAM_ATTR imu_interrupt_handler() {
