@@ -6,6 +6,10 @@
 
 SemaphoreHandle_t imuDataSemaphore = NULL;
 
+/**
+ * @brief Interrupt handler for IMU data ready signal
+ * Gives the semaphore to notify the IMU reading task
+ */
 void IRAM_ATTR imu_interrupt_handler() {
   BaseType_t xHigherPriorityTaskWoken = pdFALSE;
   // Give the semaphore to unblock the IMU reading task
@@ -18,6 +22,10 @@ void IRAM_ATTR imu_interrupt_handler() {
 Adafruit_BNO08x bno08x(BNO08X_RESET);
 sh2_SensorValue_t sensorValue;
 
+/**
+ * @brief Initializes the BNO08x IMU over I2C and configures it
+ * @return True if initialization and configuration were successful
+ */
 bool setup_imu() {
     // init and set to fast mode (400kHz)
     Wire.begin();

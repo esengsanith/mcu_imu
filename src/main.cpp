@@ -56,7 +56,12 @@ extern SemaphoreHandle_t imuDataSemaphore;
 
 DataBuffer sensor_data_buffer;
 
-// Helper function to format a local buffer of data points into a JSON string
+/**
+ * @brief Formats a local buffer of data points into a JSON string
+ * @param local_buffer Pointer to the buffer containing data points
+ * @param count Number of data points in the buffer
+ * @return Formatted JSON string
+ */
 std::string format_local_buffer_as_json(const IMUDataPoint* local_buffer, int count) {
     if (count == 0) {
         return "";
@@ -243,8 +248,8 @@ void setup() {
         for(;;){
             vTaskDelay(pdMS_TO_TICKS(500));
             if (check_power_off() == LOW){
-                digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // set the pin low to signal power off
                 Serial.println("Power off detected! Shutting down...");
+                digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // set the pin low to signal power off
                 esp_sleep_enable_timer_wakeup(1000000); // 1 second delay before sleep
                 esp_deep_sleep_start();
             }
@@ -253,6 +258,10 @@ void setup() {
 
 }
 
+/**
+ * @brief Main loop function
+ * Not used since tasks are handling all operations
+ */
 void loop() {
     vTaskDelete(NULL); 
 
