@@ -295,17 +295,17 @@ void power_monitor_task(void* pvParameters) {
  * Initializes serial, Wi-Fi, IMU, and starts tasks
  */
 void setup() {
-    // --- Initialize Power Control Pins FIRST ---
-    // Set the power flag pin as output and set it HIGH immediately on boot
-    pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
-    digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
-    Serial.println("Power flag pin set HIGH.");
+    // // --- Initialize Power Control Pins FIRST ---
+    // // Set the power flag pin as output and set it HIGH immediately on boot
+    // pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
+    // digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
+    // Serial.println("Power flag pin set HIGH.");
 
-    // Set the power button pin as input with an internal pull-up resistor
-    // Assumes the button connects the pin to GND when pressed
-    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
-    Serial.println("Power button pin configured.");
-    // --- End Power Control Init ---
+    // // Set the power button pin as input with an internal pull-up resistor
+    // // Assumes the button connects the pin to GND when pressed
+    // pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
+    // Serial.println("Power button pin configured.");
+    // // --- End Power Control Init ---
 
     Serial.begin(115200);
     delay(2000); 
@@ -347,14 +347,14 @@ void setup() {
     xTaskCreate(wifi_transmission_task, "WiFi Task", 8192, NULL, 3, NULL);
 #endif
 
-    // Start the power button monitoring task
-    Serial.println("Starting power monitor task...");
-    xTaskCreate(power_monitor_task,       // Function to implement the task
-                "Power Monitor Task", // Name of the task
-                2048,                 // Stack size in words
-                NULL,                 // Task input parameter
-                5,                    // Priority of the task
-                NULL); 
+    // // Start the power button monitoring task
+    // Serial.println("Starting power monitor task...");
+    // xTaskCreate(power_monitor_task,       // Function to implement the task
+    //             "Power Monitor Task", // Name of the task
+    //             2048,                 // Stack size in words
+    //             NULL,                 // Task input parameter
+    //             5,                    // Priority of the task
+    //             NULL); 
 
 }
 
