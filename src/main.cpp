@@ -6,6 +6,8 @@
 #include "wifi_manager.h"
 #include "data_buffer.h"
 #include "ArduinoJson.h"
+#include <LittleFS.h>
+#include <esp_sleep.h>
 
 // --- MODE SELECTOR ---
 // Set to 1 for offline testing (prints JSON to Serial Monitor)
@@ -82,6 +84,70 @@ std::string format_local_buffer_as_json(const IMUDataPoint* local_buffer, int co
     serializeJson(doc, output);
     return output;
 }
+
+// /**
+//  * @brief Creates a JSON file in LittleFS with the given data
+//  * @param json_data The JSON string to write to the file
+//  */
+// void create_json_file(const std::string& json_data) {
+//     Serial.println("JSON Data:");
+//     Serial.println(json_data.c_str());
+//     // Write JSON data to internal flash using LittleFS
+//     if (!LittleFS.begin()) {
+//         Serial.println("LittleFS mount failed");
+//         return;
+//     }
+
+//     File file = LittleFS.open("/data.json", FILE_WRITE);
+//     if (!file) {
+//         Serial.println("Failed to open file for writing");
+//         LittleFS.end();
+//         return;
+//     }
+
+//     size_t written = file.print(json_data.c_str());
+//     file.close();
+//     Serial.printf("Wrote %u bytes to /data.json\n", (unsigned)written);
+
+//     LittleFS.end();
+// }
+
+// /**
+//  * @brief Read the stored JSON file from LittleFS
+//  * @return std::string containing file contents or empty string if not found
+//  */
+// std::string read_json_file() {
+//     if (!LittleFS.begin()) {
+//         Serial.println("LittleFS mount failed");
+//         return std::string();
+//     }
+
+//     File file = LittleFS.open("/data.json", FILE_READ);
+//     if (!file) {
+//         Serial.println("No /data.json found");
+//         LittleFS.end();
+//         return std::string();
+//     }
+
+//     std::string content;
+//     while (file.available()) {
+//         content += (char)file.read();
+//     }
+//     file.close();
+//     LittleFS.end();
+//     return content;
+// }
+
+// /**
+//  * @brief Remove the stored JSON file from LittleFS
+//  */
+// void delete_json_file() {
+//     if (!LittleFS.begin()) return;
+//     if (LittleFS.exists("/data.json")) {
+//         LittleFS.remove("/data.json");
+//     }
+//     LittleFS.end();
+// }
 
 /**
  * @brief Interrupt-driven task for reading sensor data
@@ -183,16 +249,45 @@ void wifi_transmission_task(void* pvParameters) {
 #endif
 
 /**
- * @brief Checks the power state from the designated GPIO pin
- * @return The digital read value of the power flag pin
+ * @brief FreeRTOS task to monitor the power button.
+ * Implements debouncing and sets the power flag LOW to signal shutdown.
  */
-int check_power_off(){
-    // read GPIO4
-    int power_state = digitalRead(ESP32_POWER_FLAG_PIN);
-    if (power_state == LOW){
+void power_monitor_task(void* pvParameters) {
+    Serial.println("Power monitor task started.");
+    bool last_button_state = HIGH; // Assume button is not pressed initially
+    unsigned long last_debounce_time = 0;
+    const unsigned long debounce_delay = 50; // milliseconds for debounce
 
+    for (;;) {
+        // Read the current state of the button
+        int reading = digitalRead(ESP32_POWER_BUTTON_PIN);
+
+        // Check if the state has changed (with debouncing)
+        if (reading != last_button_state) {
+            last_debounce_time = millis(); // Reset debounce timer
+        }
+
+        // If the button state has been stable for longer than the debounce delay
+        if ((millis() - last_debounce_time) > debounce_delay) {
+            // If the stable state is LOW (pressed) and the previous stable state was HIGH
+            if (reading == LOW && last_button_state == HIGH) {
+                Serial.println("Power button pressed! Setting power flag LOW.");
+                digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // Signal external circuit to cut power
+
+                // --- IMPORTANT ---
+                // Do NOT enter deep sleep here. The external circuit will remove power.
+                // We just stop the task from running further checks.
+                Serial.println("Shutdown signal sent. Waiting for power cut...");
+                vTaskDelete(NULL); // Delete this task to prevent further checks
+            }
+        }
+        
+        // Update the last stable button state
+        last_button_state = reading;
+
+        // Check the button state periodically (e.g., every 20ms)
+        vTaskDelay(pdMS_TO_TICKS(20)); 
     }
-    return power_state;
 }
 
 /**
@@ -200,9 +295,17 @@ int check_power_off(){
  * Initializes serial, Wi-Fi, IMU, and starts tasks
  */
 void setup() {
-    //set GPIO3 high as Tamer requested with pullup
+    // --- Initialize Power Control Pins FIRST ---
+    // Set the power flag pin as output and set it HIGH immediately on boot
     pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
     digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
+    Serial.println("Power flag pin set HIGH.");
+
+    // Set the power button pin as input with an internal pull-up resistor
+    // Assumes the button connects the pin to GND when pressed
+    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
+    Serial.println("Power button pin configured.");
+    // --- End Power Control Init ---
 
     Serial.begin(115200);
     delay(2000); 
@@ -244,17 +347,14 @@ void setup() {
     xTaskCreate(wifi_transmission_task, "WiFi Task", 8192, NULL, 3, NULL);
 #endif
 
-    xTaskCreate([](void*){
-        for(;;){
-            vTaskDelay(pdMS_TO_TICKS(500));
-            if (check_power_off() == LOW){
-                Serial.println("Power off detected! Shutting down...");
-                digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // set the pin low to signal power off
-                esp_sleep_enable_timer_wakeup(1000000); // 1 second delay before sleep
-                esp_deep_sleep_start();
-            }
-        }
-    }, "Power Monitor Task", 2048, NULL, 5, NULL);
+    // Start the power button monitoring task
+    Serial.println("Starting power monitor task...");
+    xTaskCreate(power_monitor_task,       // Function to implement the task
+                "Power Monitor Task", // Name of the task
+                2048,                 // Stack size in words
+                NULL,                 // Task input parameter
+                5,                    // Priority of the task
+                NULL); 
 
 }
 
@@ -264,6 +364,5 @@ void setup() {
  */
 void loop() {
     vTaskDelete(NULL); 
-
 }
 #endif
