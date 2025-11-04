@@ -12,7 +12,7 @@
 // --- MODE SELECTOR ---
 // Set to 1 for offline testing (prints JSON to Serial Monitor)
 // Set to 0 for online mode (sends data over Wi-Fi)
-#define OFFLINE_TEST_MODE 0
+#define OFFLINE_TEST_MODE 1
 
 // --- ACCESS POINT TESTING --- (had priority over main application logic)
 // Set to 1 for a simple Wi-Fi AP test, 0 for the full application
@@ -282,13 +282,14 @@ void power_monitor_task(void* pvParameters) {
 
 /**
  * @brief Main setup function
- * Initializes serial, Wi-Fi, IMU, and starts tasks
+ * Initializes power, serial, Wi-Fi, IMU, and starts tasks
  */
 void setup() {
     // init power control pins and interrupt
     pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
     digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
     Serial.println("Power flag pin set HIGH.");
+    
     powerButtonSemaphore = xSemaphoreCreateBinary();
     pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
@@ -318,14 +319,18 @@ void setup() {
 
     delay(500);
 
-    if (!setup_imu()) {
-        Serial.println("IMU initialization failed! Halting.");
-        while (1) { delay(100); }
+    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);           
+
+    bool success = false;
+    while (!success) {
+        success = setup_imu(); // return true on success, break loop
+        if (!success) {
+            Serial.println("Retrying IMU initialization in 2 seconds...");
+            delay(2000);
+        }
     }
     Serial.println("IMU initialization successful.");
 
-
-    Serial.println("Starting tasks...");
     xTaskCreate(imu_read_task, "IMU Task", 4096, NULL, 10, NULL);
 
 #if OFFLINE_TEST_MODE == 1
@@ -334,8 +339,6 @@ void setup() {
     xTaskCreate(wifi_transmission_task, "WiFi Task", 8192, NULL, 3, NULL);
 #endif
 
-    Serial.println("Starting power monitor task...");
-    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);           
 }
 
 /**
