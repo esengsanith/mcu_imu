@@ -248,45 +248,35 @@ void wifi_transmission_task(void* pvParameters) {
 }
 #endif
 
+SemaphoreHandle_t powerButtonSemaphore = NULL;
+
 /**
- * @brief FreeRTOS task to monitor the power button.
- * Implements debouncing and sets the power flag LOW to signal shutdown.
+ * @brief Interrupt handler for power button press
+ * Gives the semaphore to notify the power monitoring task
  */
+void IRAM_ATTR power_button_interrupt_handler() {
+  BaseType_t xHigherPriorityTaskWoken = pdFALSE;
+  // Give the semaphore to unblock the power monitoring task
+  xSemaphoreGiveFromISR(powerButtonSemaphore, &xHigherPriorityTaskWoken);
+  if (xHigherPriorityTaskWoken) { // if a higher priority task was woken, yield
+    portYIELD_FROM_ISR();
+  }
+}
+
 void power_monitor_task(void* pvParameters) {
-    Serial.println("Power monitor task started.");
-    bool last_button_state = HIGH; // Assume button is not pressed initially
-    unsigned long last_debounce_time = 0;
-    const unsigned long debounce_delay = 50; // milliseconds for debounce
-
+    Serial.println("Power monitor task started (interrupt-based).");
     for (;;) {
-        // Read the current state of the button
-        int reading = digitalRead(ESP32_POWER_BUTTON_PIN);
+        // Wait indefinitely for the semaphore (signal from ISR)
+        if (xSemaphoreTake(powerButtonSemaphore, portMAX_DELAY) == pdTRUE) {
+            // debounce
+            vTaskDelay(pdMS_TO_TICKS(250));
+            xSemaphoreTake(powerButtonSemaphore, (TickType_t)0); 
 
-        // Check if the state has changed (with debouncing)
-        if (reading != last_button_state) {
-            last_debounce_time = millis(); // Reset debounce timer
+            // send power flag low
+            Serial.println("Power button pressed! Setting power flag LOW.");
+            digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // Signal external circuit to cut power
+            Serial.println("Shutdown signal sent.");
         }
-
-        // If the button state has been stable for longer than the debounce delay
-        if ((millis() - last_debounce_time) > debounce_delay) {
-            // If the stable state is LOW (pressed) and the previous stable state was HIGH
-            if (reading == LOW && last_button_state == HIGH) {
-                Serial.println("Power button pressed! Setting power flag LOW.");
-                digitalWrite(ESP32_POWER_FLAG_PIN, LOW); // Signal external circuit to cut power
-
-                // --- IMPORTANT ---
-                // Do NOT enter deep sleep here. The external circuit will remove power.
-                // We just stop the task from running further checks.
-                Serial.println("Shutdown signal sent. Waiting for power cut...");
-                vTaskDelete(NULL); // Delete this task to prevent further checks
-            }
-        }
-        
-        // Update the last stable button state
-        last_button_state = reading;
-
-        // Check the button state periodically (e.g., every 20ms)
-        vTaskDelay(pdMS_TO_TICKS(20)); 
     }
 }
 
@@ -295,17 +285,14 @@ void power_monitor_task(void* pvParameters) {
  * Initializes serial, Wi-Fi, IMU, and starts tasks
  */
 void setup() {
-    // // --- Initialize Power Control Pins FIRST ---
-    // // Set the power flag pin as output and set it HIGH immediately on boot
-    // pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
-    // digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
-    // Serial.println("Power flag pin set HIGH.");
-
-    // // Set the power button pin as input with an internal pull-up resistor
-    // // Assumes the button connects the pin to GND when pressed
-    // pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
-    // Serial.println("Power button pin configured.");
-    // // --- End Power Control Init ---
+    // init power control pins and interrupt
+    pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
+    digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
+    Serial.println("Power flag pin set HIGH.");
+    powerButtonSemaphore = xSemaphoreCreateBinary();
+    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
+    Serial.println("Power button interrupt pin configured.");
 
     Serial.begin(115200);
     delay(2000); 
@@ -325,7 +312,7 @@ void setup() {
       Serial.print(".");
       delay(1000);
     }
-    // delay(1000); // give some time to stabilize
+    
     Serial.println("\nClient connected!");
 #endif
 
@@ -347,15 +334,8 @@ void setup() {
     xTaskCreate(wifi_transmission_task, "WiFi Task", 8192, NULL, 3, NULL);
 #endif
 
-    // // Start the power button monitoring task
-    // Serial.println("Starting power monitor task...");
-    // xTaskCreate(power_monitor_task,       // Function to implement the task
-    //             "Power Monitor Task", // Name of the task
-    //             2048,                 // Stack size in words
-    //             NULL,                 // Task input parameter
-    //             5,                    // Priority of the task
-    //             NULL); 
-
+    Serial.println("Starting power monitor task...");
+    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);           
 }
 
 /**
