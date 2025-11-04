@@ -289,11 +289,6 @@ void setup() {
     pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
     digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
     Serial.println("Power flag pin set HIGH.");
-    
-    powerButtonSemaphore = xSemaphoreCreateBinary();
-    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
-    Serial.println("Power button interrupt pin configured.");
 
     Serial.begin(115200);
     delay(2000); 
@@ -317,8 +312,12 @@ void setup() {
     Serial.println("\nClient connected!");
 #endif
 
-    delay(500);
+    delay(2000);
 
+    powerButtonSemaphore = xSemaphoreCreateBinary();
+    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
+    Serial.println("Power button interrupt pin configured.");
     xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);           
 
     bool success = false;
