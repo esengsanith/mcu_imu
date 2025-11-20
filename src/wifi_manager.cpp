@@ -11,7 +11,8 @@ void create_access_point() {
     Serial.println(WIFI_SSID);
 
     // create the access point
-    WiFi.softAP(WIFI_SSID, WIFI_PASS);
+    // WiFi.softAP(WIFI_SSID, WIFI_PASS);
+    WiFi.softAP(WIFI_SSID); // no password
     
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");

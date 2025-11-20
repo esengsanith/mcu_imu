@@ -2,16 +2,20 @@
 #pragma once
 
 // Wi-Fi Credentials
-#define WIFI_SSID "ESP32_AP2"
+// #define WIFI_SSID "ESP32_AP_RACKET"
+// #define WIFI_SSID "ESP32_AP_WRIST"
+#define WIFI_SSID "ESP32_AP_TEST"
 #define WIFI_PASS "password"
 
 // Web Server Endpoint
+// #define SERVER_URL "http://192.168.4.2:4000/data" // test server URL
 #define SERVER_URL "http://192.168.4.2:4000/data"// FILL IN (WEB APP SUBSYSTEM)
 
 // IMU & Buffer Settings
-#define IMU_SAMPLE_RATE_HZ 50
-#define DATA_TRANSMISSION_INTERVAL_MS 2000
-#define BUFFER_SIZE 100
+#define IMU_SAMPLE_RATE_HZ 100
+#define BUFFER_SIZE 150 // number of IMU data points to buffer
+#define THRESHOLD_ACCELERATION_MSS 50.0f // m/s²
+#define SWING_TIMEOUT_MS 700 // ms
 
 // BNO08x I2C address
 #define BNO08X_I2C_ADDR 0x4B

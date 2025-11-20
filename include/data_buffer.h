@@ -10,10 +10,12 @@ public:
     DataBuffer();
     bool addPoint(const IMUDataPoint& point);
     int copyAndClear(IMUDataPoint* destination);
+    void clear();
 
 private:
     IMUDataPoint buffer[BUFFER_SIZE];
     int head;
+    int count; // number of valid items currently in the buffer
     mutable std::mutex buffer_mutex; 
 };
 

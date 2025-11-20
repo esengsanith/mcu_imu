@@ -36,7 +36,7 @@ bool setup_imu() {
     // configure the interrupt pin
     pinMode(BNO08X_INT_PIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(BNO08X_INT_PIN), imu_interrupt_handler, FALLING);
-
+    
     //init the IMU
     if (!bno08x.begin_I2C(BNO08X_I2C_ADDR)) {
         Serial.println("Failed to find BNO08x chip.");

@@ -10,18 +10,17 @@
 #include <esp_sleep.h>
 
 // --- MODE SELECTOR ---
-// Set to 1 for offline testing (prints JSON to Serial Monitor)
-// Set to 0 for online mode (sends data over Wi-Fi)
-#define OFFLINE_TEST_MODE 1
+// Set to 1 for debug testing (prints JSON to Serial Monitor)
+// Set to 0 for normal mode (sends data over Wi-Fi)
+#define DEBUG_MODE 0
 
 // --- ACCESS POINT TESTING --- (had priority over main application logic)
 // Set to 1 for a simple Wi-Fi AP test, 0 for the full application
 #define AP_TEST_MODE 0
 // ----------------------------
 
-
 #if AP_TEST_MODE == 1
-/** *@brief Simple code for testing ESP32 in Access Point mode
+/** *@brief code for testing ESP32 in Access Point mode
  * This code creates a WIFI access point and waits for the user to connect
 */
 void setup() {
@@ -85,164 +84,117 @@ std::string format_local_buffer_as_json(const IMUDataPoint* local_buffer, int co
     return output;
 }
 
-// /**
-//  * @brief Creates a JSON file in LittleFS with the given data
-//  * @param json_data The JSON string to write to the file
-//  */
-// void create_json_file(const std::string& json_data) {
-//     Serial.println("JSON Data:");
-//     Serial.println(json_data.c_str());
-//     // Write JSON data to internal flash using LittleFS
-//     if (!LittleFS.begin()) {
-//         Serial.println("LittleFS mount failed");
-//         return;
-//     }
-
-//     File file = LittleFS.open("/data.json", FILE_WRITE);
-//     if (!file) {
-//         Serial.println("Failed to open file for writing");
-//         LittleFS.end();
-//         return;
-//     }
-
-//     size_t written = file.print(json_data.c_str());
-//     file.close();
-//     Serial.printf("Wrote %u bytes to /data.json\n", (unsigned)written);
-
-//     LittleFS.end();
-// }
-
-// /**
-//  * @brief Read the stored JSON file from LittleFS
-//  * @return std::string containing file contents or empty string if not found
-//  */
-// std::string read_json_file() {
-//     if (!LittleFS.begin()) {
-//         Serial.println("LittleFS mount failed");
-//         return std::string();
-//     }
-
-//     File file = LittleFS.open("/data.json", FILE_READ);
-//     if (!file) {
-//         Serial.println("No /data.json found");
-//         LittleFS.end();
-//         return std::string();
-//     }
-
-//     std::string content;
-//     while (file.available()) {
-//         content += (char)file.read();
-//     }
-//     file.close();
-//     LittleFS.end();
-//     return content;
-// }
-
-// /**
-//  * @brief Remove the stored JSON file from LittleFS
-//  */
-// void delete_json_file() {
-//     if (!LittleFS.begin()) return;
-//     if (LittleFS.exists("/data.json")) {
-//         LittleFS.remove("/data.json");
-//     }
-//     LittleFS.end();
-// }
+SemaphoreHandle_t transmitDataSemaphore = NULL;
+bool collectingSwingData = false;
 
 /**
  * @brief Interrupt-driven task for reading sensor data
  * This task sleeps until woken by the IMU's hardware interrupt via a semaphore
  */
 void imu_read_task(void* pvParameters) {
+    unsigned long start_time;
     for (;;) {
         // wait for semaphore indefinitely
         // sleep until interrupt fires
         if (xSemaphoreTake(imuDataSemaphore, portMAX_DELAY) == pdTRUE) {
             IMUDataPoint new_point;
+            
             // interrupt fired; read available data
             if (read_sensor_data(new_point)) {
                 sensor_data_buffer.addPoint(new_point);
+                //check for swing event
+                float total_accel = sqrt(
+                    new_point.accelX * new_point.accelX +
+                    new_point.accelY * new_point.accelY +
+                    new_point.accelZ * new_point.accelZ
+                );
+
+                //Serial.println(total_accel);
+                
+                if (collectingSwingData){ // swing in progress
+                    sensor_data_buffer.addPoint(new_point);
+                    // check if swing ended
+                    // if (total_accel < (THRESHOLD_ACCELERATION_MSS)) { // swing end detected
+                    //     collectingSwingData = false; 
+                    //     xSemaphoreGive(transmitDataSemaphore); // signal data ready for transmission
+                    // } 
+                    // check for timeout
+                    if (millis() - start_time >= SWING_TIMEOUT_MS) { // swing timeout
+                        collectingSwingData = false;
+                        xSemaphoreGive(transmitDataSemaphore); // signal data ready for transmission
+                    }
+                }
+                else if (total_accel >= THRESHOLD_ACCELERATION_MSS) { //swing start detected
+                    collectingSwingData = true;
+                    start_time = millis();
+                }
+                else{
+                    // not collecting data, and no swing detected; do nothing
+                }
             }
         }
     }
 }
 
-#if OFFLINE_TEST_MODE == 1
+#if DEBUG_MODE == 1
 /**
  * @brief "Offline" task that prints the data buffer to the Serial Monitor
+ * This task waits for the transmitDataSemaphore to be given, then prints the buffered data.
  */
 void data_output_task(void* pvParameters) {
     static IMUDataPoint local_data_buffer[BUFFER_SIZE];
-    static unsigned long total_data_points = 0;
-    static unsigned long total_packets_sent = 0;
-    static unsigned long last_report_time = millis();
 
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(DATA_TRANSMISSION_INTERVAL_MS));
-        int point_count = sensor_data_buffer.copyAndClear(local_data_buffer);
-        
-        if (point_count > 0) {
-            std::string payload = format_local_buffer_as_json(local_data_buffer, point_count);
+        if (xSemaphoreTake(transmitDataSemaphore, portMAX_DELAY) == pdTRUE) {
+            int point_count = sensor_data_buffer.copyAndClear(local_data_buffer);
+            
+            if (point_count > 0) {
+                std::string payload = format_local_buffer_as_json(local_data_buffer, point_count);
 
-            Serial.println("\n--- SIMULATED SEND ---");
-            Serial.printf("Data points captured: %d\n", point_count);
-            // Print the full JSON payload to verify the data
-            Serial.println("JSON Payload:");
-            Serial.println(payload.c_str());
-            Serial.println("----------------------\n");
-
-            total_data_points += point_count;
-            total_packets_sent++;
-        }
-
-        if (millis() - last_report_time > 120000) {
-            Serial.println("\n--- 2-MINUTE SUMMARY ---");
-            Serial.printf("Total Data Points Sent: %lu\n", total_data_points);
-            Serial.printf("Total JSON Packets Sent: %lu\n", total_packets_sent);
-            Serial.println("------------------------\n");
-            last_report_time = millis();
+                Serial.println("\n--- SWING CAPTURE ---");
+                Serial.printf("Data points captured: %d\n", point_count);
+                // Print the full JSON payload to verify the data
+                Serial.println("JSON Payload:");
+                Serial.println(payload.c_str());
+                Serial.println("----------------------\n");
+            }
         }
     }
 }
 #else
 /**
  * @brief "Online" task for sending data over Wi-Fi.
+ * This task waits for the transmitDataSemaphore to be given, then sends the buffered data.
  */
 void wifi_transmission_task(void* pvParameters) {
     unsigned long start_time, end_time;
     static IMUDataPoint local_data_buffer[BUFFER_SIZE];
-    static unsigned long total_data_points = 0;
-    static unsigned long total_packets_sent = 0;
-    static unsigned long last_report_time = millis();
 
     for (;;) {
-        vTaskDelay(pdMS_TO_TICKS(DATA_TRANSMISSION_INTERVAL_MS));
-        int point_count = sensor_data_buffer.copyAndClear(local_data_buffer);
-        
-        if (point_count > 0) {
-            std::string payload = format_local_buffer_as_json(local_data_buffer, point_count);
-            
-            Serial.printf("\nAttempting to send %d data points...\n", point_count);
-            
-            start_time = millis();
-            if (send_http_post(payload)) {
-                end_time = millis();
-                Serial.printf("SUCCESS: Data batch sent. Latency: %lu ms\n", end_time - start_time);
-                total_data_points += point_count;
-                total_packets_sent++;
-            } else {
-                Serial.println("FAILURE: Failed to send data batch.");
+        if (xSemaphoreTake(transmitDataSemaphore, portMAX_DELAY) == pdTRUE) {
+            int point_count = sensor_data_buffer.copyAndClear(local_data_buffer);
+            if (point_count > 0) {
+                std::string payload = format_local_buffer_as_json(local_data_buffer, point_count);
+                
+                Serial.println("\n--- SWING CAPTURE ---");
+                Serial.printf("\nAttempting to send %d data points...\n", point_count);
+                
+                bool success = false;
+                while (!success) {
+                    start_time = millis();
+                    success = send_http_post(payload);
+                    end_time = millis();
+                    if (success){
+                        Serial.printf("SUCCESS: Data batch sent. Latency: %lu ms\n", end_time - start_time);
+                        Serial.printf("Data Points Sent: %lu\n", point_count);
+                        Serial.println("----------------------\n");
+                    }
+                    else {
+                        Serial.println("ERROR: Data transmission failed. Retrying...");
+                        vTaskDelay(pdMS_TO_TICKS(100));
+                    }
+                }
             }
-        }
-
-        if (millis() - last_report_time > 120000) {
-            Serial.println("\n--- 2-MINUTE SUMMARY ---");
-            Serial.printf("Total Data Points Sent: %lu\n", total_data_points);
-            Serial.printf("Total JSON Packets Sent: %lu\n", total_packets_sent);
-            Serial.println("------------------------\n");
-            last_report_time = millis();
-            total_data_points = 0;
-            total_packets_sent = 0;
         }
     }
 }
@@ -285,7 +237,7 @@ void power_monitor_task(void* pvParameters) {
  * Initializes power, serial, Wi-Fi, IMU, and starts tasks
  */
 void setup() {
-    // init power control pins and interrupt
+    // init power control pin
     pinMode(ESP32_POWER_FLAG_PIN, OUTPUT);
     digitalWrite(ESP32_POWER_FLAG_PIN, HIGH);
     Serial.println("Power flag pin set HIGH.");
@@ -294,15 +246,28 @@ void setup() {
     delay(2000); 
 
 
-#if OFFLINE_TEST_MODE == 1
-    Serial.println("--- Tennis Racket Tracker (INTERRUPT-DRIVEN OFFLINE MODE) ---");
+#if DEBUG_MODE == 1
+    Serial.println("--- Tennis Racket Tracker (SERIAL PORT) ---");
 #else
-    Serial.println("--- Tennis Racket Tracker (INTERRUPT-DRIVEN ONLINE MODE) ---");
+    Serial.println("--- Tennis Racket Tracker (WIFI) ---");
 #endif
-    
-#if OFFLINE_TEST_MODE == 0
+
+    // Initialize power button interrupt
+    delay(1000);
+    powerButtonSemaphore = xSemaphoreCreateBinary();
+    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
+    attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
+    Serial.println("Power button interrupt pin configured.");
+    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);        
+
+    // Initialize WiFi
+#if DEBUG_MODE == 0
     // create an AP and wait for a client to connect.
-    create_access_point(); 
+    create_access_point();
+    Serial.print("Access Point: ");
+    Serial.println(WIFI_SSID);
+    // Serial.print("WiFI Password: ");
+    // Serial.println(WIFI_PASS);  
     Serial.println("Waiting for a client to connect...");
     while (WiFi.softAPgetStationNum() == 0) {
       Serial.print(".");
@@ -312,27 +277,20 @@ void setup() {
     Serial.println("\nClient connected!");
 #endif
 
-    delay(2000);
-
-    powerButtonSemaphore = xSemaphoreCreateBinary();
-    pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
-    attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
-    Serial.println("Power button interrupt pin configured.");
-    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);           
-
-    bool success = false;
-    while (!success) {
-        success = setup_imu(); // return true on success, break loop
-        if (!success) {
-            Serial.println("Retrying IMU initialization in 2 seconds...");
-            delay(2000);
-        }
+    // Initialize the IMU  
+    delay(1000);
+    while (!setup_imu()) { // retry until successful
+        Serial.println("IMU initialization failed.");
+        Serial.println("Retrying IMU initialization in 2 seconds...");
+        delay(2000);
     }
     Serial.println("IMU initialization successful.");
 
+    transmitDataSemaphore = xSemaphoreCreateBinary();
+
     xTaskCreate(imu_read_task, "IMU Task", 4096, NULL, 10, NULL);
 
-#if OFFLINE_TEST_MODE == 1
+#if DEBUG_MODE == 1
     xTaskCreate(data_output_task, "Data Output Task", 4096, NULL, 3, NULL);
 #else
     xTaskCreate(wifi_transmission_task, "WiFi Task", 8192, NULL, 3, NULL);
