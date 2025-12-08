@@ -216,7 +216,7 @@ void IRAM_ATTR power_button_interrupt_handler() {
 }
 
 void power_monitor_task(void* pvParameters) {
-    Serial.println("Power monitor task started (interrupt-based).");
+    Serial.println("Power monitor task started.");
     for (;;) {
         // Wait indefinitely for the semaphore (signal from ISR)
         if (xSemaphoreTake(powerButtonSemaphore, portMAX_DELAY) == pdTRUE) {
@@ -258,7 +258,16 @@ void setup() {
     pinMode(ESP32_POWER_BUTTON_PIN, INPUT_PULLUP);
     attachInterrupt(digitalPinToInterrupt(ESP32_POWER_BUTTON_PIN), power_button_interrupt_handler, FALLING);
     Serial.println("Power button interrupt pin configured.");
-    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);        
+    xTaskCreate(power_monitor_task, "Power Monitor Task", 2048, NULL, 5, NULL);    
+    
+     // Initialize the IMU  
+    delay(1000);
+    while (!setup_imu()) { // retry until successful
+        Serial.println("IMU initialization failed.");
+        Serial.println("Retrying IMU initialization in 2 seconds...");
+        delay(2000);
+    }
+    Serial.println("IMU initialization successful.");
 
     // Initialize WiFi
 #if DEBUG_MODE == 0
@@ -276,15 +285,6 @@ void setup() {
     
     Serial.println("\nClient connected!");
 #endif
-
-    // Initialize the IMU  
-    delay(1000);
-    while (!setup_imu()) { // retry until successful
-        Serial.println("IMU initialization failed.");
-        Serial.println("Retrying IMU initialization in 2 seconds...");
-        delay(2000);
-    }
-    Serial.println("IMU initialization successful.");
 
     transmitDataSemaphore = xSemaphoreCreateBinary();
 
