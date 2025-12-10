@@ -61,14 +61,14 @@ DataBuffer sensor_data_buffer;
  * @brief Formats a local buffer of data points into a JSON string
  * Structure: { "deviceId": 12345, "data": [ { "ts":..., "ax":... }, ... ] }
  */
-std::string format_local_buffer_as_json(const IMUDataPoint* local_buffer, int count) {
+std::string format_local_buffer_as_json(const IMUDataPoint* local_buffer, int count, int device_id) {
     if (count == 0) {
         return "";
     }
     JsonDocument doc;
     
     // Add the device ID at the top level
-    doc["deviceId"] = DEVICE_ID; // You can change this to a variable or unique chip ID later
+    doc["deviceId"] = device_id; 
 
     // Create the "data" array
     JsonArray dataArray = doc["data"].to<JsonArray>();
@@ -178,11 +178,13 @@ void wifi_transmission_task(void* pvParameters) {
         if (xSemaphoreTake(transmitDataSemaphore, portMAX_DELAY) == pdTRUE) {
             int point_count = sensor_data_buffer.copy(local_data_buffer);
             if (point_count > 0) {
-                std::string payload = format_local_buffer_as_json(local_data_buffer, point_count);
+                std::string payload = format_local_buffer_as_json(local_data_buffer, point_count, ID);
+
+                // std::string payload1 = format_local_buffer_as_json(local_data_buffer, point_count, 1);
+                // std::string payload2 = format_local_buffer_as_json(local_data_buffer, point_count, 2);
                 
                 Serial.println("\n--- SWING CAPTURE ---");
                 Serial.printf("\nAttempting to send %d data points...\n", point_count);
-                
                 bool success = false;
                 while (!success) {
                     start_time = millis();
@@ -198,6 +200,38 @@ void wifi_transmission_task(void* pvParameters) {
                         vTaskDelay(pdMS_TO_TICKS(100));
                     }
                 }
+                
+                // bool success1 = false;
+                // while (!success1) {
+                //     start_time = millis();
+                //     success1 = send_http_post(payload1);
+                //     end_time = millis();
+                //     if (success1){
+                //         Serial.printf("SUCCESS: Data batch sent. Latency: %lu ms\n", end_time - start_time);
+                //         Serial.printf("Data Points Sent: %lu\n", point_count);
+                //         Serial.println("----------------------\n");
+                //     }
+                //     else {
+                //         Serial.println("ERROR: Data transmission failed. Retrying...");
+                //         vTaskDelay(pdMS_TO_TICKS(100));
+                //     }
+                // }
+
+                // bool success2 = false;
+                // while (!success2) {
+                //     start_time = millis();
+                //     success2 = send_http_post(payload2);
+                //     end_time = millis();
+                //     if (success2){
+                //         Serial.printf("SUCCESS: Data batch sent. Latency: %lu ms\n", end_time - start_time);
+                //         Serial.printf("Data Points Sent: %lu\n", point_count);
+                //         Serial.println("----------------------\n");
+                //     }
+                //     else {
+                //         Serial.println("ERROR: Data transmission failed. Retrying...");
+                //         vTaskDelay(pdMS_TO_TICKS(100));
+                //     }
+                // }
             }
         }
     }

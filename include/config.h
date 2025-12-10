@@ -2,7 +2,7 @@
 #pragma once
 
 // Device ID
-#define DEVICE_ID 1
+#define ID 1
 // #define DEVICE_ID 2
 
 // Wi-Fi Credentials
