@@ -1,15 +1,23 @@
 // config.h
 #pragma once
 
+// Device ID
+#define DEVICE_ID 1
+// #define DEVICE_ID 2
+
 // Wi-Fi Credentials
-// #define WIFI_SSID "ESP32_AP_RACKET"
-// #define WIFI_SSID "ESP32_AP_WRIST"
-#define WIFI_SSID "ESP32_AP_TEST"
-#define WIFI_PASS "password"
+#define WIFI_SSID_AP "ESP32_AP_TEST"
+#define WIFI_PASS_AP "password"
+// // #define WIFI_SSID_USER "EVAN-LAPTOP"
+// // #define WIFI_PASS_USER "dog12345"
+// #define WIFI_SSID_USER "Evan's iPhone"
+// #define WIFI_PASS_USER "dog12345"
+#define WIFI_SSID_USER "nico_laptop"
+#define WIFI_PASS_USER "abc123abc"
 
 // Web Server Endpoint
-// #define SERVER_URL "http://192.168.4.2:4000/data" // test server URL
-#define SERVER_URL "http://192.168.4.2:4000/data"// FILL IN (WEB APP SUBSYSTEM)
+#define SERVER_URL "http://192.168.4.2:4000/data" // web app server URL
+// #define SERVER_URL "http://192.168.137.1:4000/data" // hotspot URL
 
 // IMU & Buffer Settings
 #define IMU_SAMPLE_RATE_HZ 100

@@ -59,16 +59,20 @@ DataBuffer sensor_data_buffer;
 
 /**
  * @brief Formats a local buffer of data points into a JSON string
- * @param local_buffer Pointer to the buffer containing data points
- * @param count Number of data points in the buffer
- * @return Formatted JSON string
+ * Structure: { "deviceId": 12345, "data": [ { "ts":..., "ax":... }, ... ] }
  */
 std::string format_local_buffer_as_json(const IMUDataPoint* local_buffer, int count) {
     if (count == 0) {
         return "";
     }
     JsonDocument doc;
-    JsonArray dataArray = doc.to<JsonArray>();
+    
+    // Add the device ID at the top level
+    doc["deviceId"] = DEVICE_ID; // You can change this to a variable or unique chip ID later
+
+    // Create the "data" array
+    JsonArray dataArray = doc["data"].to<JsonArray>();
+
     for (int i = 0; i < count; i++) {
         JsonObject dataPoint = dataArray.add<JsonObject>();
         dataPoint["ts"] = local_buffer[i].timestamp_us;
@@ -172,7 +176,7 @@ void wifi_transmission_task(void* pvParameters) {
 
     for (;;) {
         if (xSemaphoreTake(transmitDataSemaphore, portMAX_DELAY) == pdTRUE) {
-            int point_count = sensor_data_buffer.copyAndClear(local_data_buffer);
+            int point_count = sensor_data_buffer.copy(local_data_buffer);
             if (point_count > 0) {
                 std::string payload = format_local_buffer_as_json(local_data_buffer, point_count);
                 
@@ -274,14 +278,15 @@ void setup() {
     // create an AP and wait for a client to connect.
     create_access_point();
     Serial.print("Access Point: ");
-    Serial.println(WIFI_SSID);
-    // Serial.print("WiFI Password: ");
-    // Serial.println(WIFI_PASS);  
+    Serial.println(WIFI_SSID_AP);
     Serial.println("Waiting for a client to connect...");
     while (WiFi.softAPgetStationNum() == 0) {
       Serial.print(".");
       delay(1000);
     }
+
+    // connect to user wifi network
+    // connect_to_wifi();
     
     Serial.println("\nClient connected!");
 #endif

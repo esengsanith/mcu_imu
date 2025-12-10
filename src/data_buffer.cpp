@@ -52,7 +52,7 @@ bool DataBuffer::addPoint(const IMUDataPoint& point) {
 //     return copied_count;
 // }
 // ensure the buffer is copied
-int DataBuffer::copyAndClear(IMUDataPoint* destination) {
+int DataBuffer::copy(IMUDataPoint* destination) {
     std::lock_guard<std::mutex> lock(buffer_mutex);
     if (count == 0) {
         return 0;
@@ -71,9 +71,6 @@ int DataBuffer::copyAndClear(IMUDataPoint* destination) {
         memcpy(destination + first_part, &buffer[0], (copied_count - first_part) * sizeof(IMUDataPoint));
     }
 
-    // NOTE: this function now preserves the buffer state (does NOT clear).
-    // The buffer will continue to wrap and receive new data; caller may
-    // call `clear()` when they want to discard contents.
     return copied_count;
 }
 

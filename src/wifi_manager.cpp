@@ -8,15 +8,34 @@
  */
 void create_access_point() {
     Serial.print("Creating Access Point named: ");
-    Serial.println(WIFI_SSID);
+    Serial.println(WIFI_SSID_AP);
 
     // create the access point
     // WiFi.softAP(WIFI_SSID, WIFI_PASS);
-    WiFi.softAP(WIFI_SSID); // no password
+    WiFi.softAP(WIFI_SSID_AP); // no password
     
     IPAddress IP = WiFi.softAPIP();
     Serial.print("AP IP address: ");
     Serial.println(IP);
+}
+
+/**
+ * @brief Connects to a Wi-Fi network using the credentials from config.h
+ */
+void connect_to_wifi() {
+    Serial.print("Connecting to Wi-Fi network: ");
+    Serial.println(WIFI_SSID_USER);
+
+    WiFi.begin(WIFI_SSID_USER, WIFI_PASS_USER);
+
+    while (WiFi.status() != WL_CONNECTED) {
+        delay(1000);
+        Serial.print(".");
+    }
+
+    Serial.println("\nConnected to Wi-Fi!");
+    Serial.print("IP Address: ");
+    Serial.println(WiFi.localIP());
 }
 
 /**
@@ -30,6 +49,13 @@ bool send_http_post(const std::string& payload) {
         Serial.println("No client connected, cannot send data.");
         return false;
     }
+    
+    // check if connected to Wi-Fi
+    // while (WiFi.status() != WL_CONNECTED) {
+    //     WiFi.begin(WIFI_SSID_USER, WIFI_PASS_USER);
+    //     Serial.println("Wi-Fi not connected, retrying...");
+    //     return false;
+    // }
 
     HTTPClient http;
     http.begin(SERVER_URL);
@@ -44,5 +70,8 @@ bool send_http_post(const std::string& payload) {
     }
 
     http.end();
+
+    delay(100); // brief delay
+    
     return (httpResponseCode >= 200 && httpResponseCode < 300);
 }

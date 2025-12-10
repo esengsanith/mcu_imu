@@ -9,7 +9,7 @@ class DataBuffer {
 public:
     DataBuffer();
     bool addPoint(const IMUDataPoint& point);
-    int copyAndClear(IMUDataPoint* destination);
+    int copy(IMUDataPoint* destination);
     void clear();
 
 private:
